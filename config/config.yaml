@@ -1,0 +1,19 @@
+location:
+  latitude: -6.5924
+  longitude: 110.671
+  timezone: "Asia/Jakarta"
+
+data:
+  raw_path: "data/raw/jepara_weather_log.csv"
+  processed_path: "data/processed/jepara_weather_clean.csv"
+  max_lag_hours: 3
+
+thresholds:
+  wind_speed_kmh: 30
+  rain_mm: 20
+  pressure_drop_hpa: 5
+
+model:
+  target_column: "kelayakan"
+  test_size: 0.2
+  random_state: 42
