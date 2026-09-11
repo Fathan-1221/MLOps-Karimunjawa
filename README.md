@@ -29,13 +29,7 @@ MLOps-Karimunjawa/
 2. Klik tombol **Code** → tab **Codespaces** → **Create codespace on main**.
 3. Tunggu environment selesai di-build sesuai konfigurasi pada `.devcontainer/devcontainer.json` (Python 3.11 + dependency otomatis ter-install lewat `requirements.txt`).
 4. Setelah Codespace aktif, environment sudah siap dipakai.
-
-## Branching Strategy
-
-Proyek ini menerapkan **GitHub Flow**:
-- Branch `main` selalu dalam kondisi stabil/deploy-ready.
-- Setiap eksperimen/fitur baru dikerjakan di branch terpisah, misalnya `feat/initial-eda`.
-- Perubahan di-merge ke `main` melalui Pull Request setelah divalidasi.
+5. Bisa tuliskan perintah python src/data_acquisition.py untuk mencoba mengambil data dari openmateo
 
 ## Menjalankan Pipeline Data
 
@@ -43,7 +37,7 @@ Proyek ini menerapkan **GitHub Flow**:
 ```bash
    python src/data_acquisition.py
 ```
-2. **Preprocessing & feature engineering** (cleaning, labeling kelayakan):
+2. Preprocessing & feature engineering (cleaning, labeling kelayakan):
 ```bash
    python src/preprocessing.py
 ```
