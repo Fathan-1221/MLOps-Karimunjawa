@@ -1,128 +1,143 @@
-import os
-
-import numpy as np
 import pandas as pd
-from scipy.stats import ks_2samp
+import os
+import glob
 
-CSV_RAW = os.path.join("data", "raw", "jepara_weather_log.csv")
-CSV_PROCESSED = os.path.join("data", "processed", "jepara_weather_clean.csv")
-
-# Threshold kelayakan 
-WIND_SPEED_THRESHOLD = 30      
-RAIN_THRESHOLD = 20           
-PRESSURE_DROP_THRESHOLD = 5    
+RAW_DIR = "data/raw"
+PROCESSED_FILE = "data/processed/jepara_weather_clean.csv"
 
 
-def load_raw_data(path: str = CSV_RAW) -> pd.DataFrame:
-    """Load CSV mentah dan pastikan tipe data benar."""
-    df = pd.read_csv(path)
+def load_data():
+    
+    files = glob.glob(os.path.join(RAW_DIR, "weather_*.csv"))
+
+    if not files:
+        raise FileNotFoundError(
+            "Tidak ditemukan file data cuaca di data/raw/"
+        )
+
+    dataframes = []
+
+    for file in files:
+        df = pd.read_csv(file)
+        dataframes.append(df)
+
+    df = pd.concat(dataframes, ignore_index=True)
+
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df
-
-
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Cleaning: hapus duplikat, urutkan waktu, tangani missing value."""
-    df = df.drop_duplicates(subset="timestamp").copy()
-    df = df.sort_values("timestamp").reset_index(drop=True)
-
-    # Interpolasi linear untuk missing value numerik (jika ada gap kecil)
-    numeric_cols = ["temperature", "humidity", "pressure", "wind_speed", "rain"]
-    df[numeric_cols] = df[numeric_cols].interpolate(method="linear", limit=3)
-
-    # Drop baris yang masih ada NaN setelah interpolasi 
-    before = len(df)
-    df = df.dropna(subset=numeric_cols).reset_index(drop=True)
-    dropped = before - len(df)
-    if dropped > 0:
-        print(f"[Cleaning] {dropped} baris di-drop karena missing value tidak bisa diinterpolasi.")
 
     return df
 
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Feature engineering: rolling stats & indikator perubahan cuaca mendadak."""
-    df = df.copy()
+def clean_data(df):
+    """Membersihkan data cuaca."""
 
-    # Penurunan tekanan dalam 3 jam terakhir (indikator badai)
-    df["pressure_drop_3h"] = (df["pressure"].diff(periods=3) * -1).fillna(0).round(2)
+    # Hapus timestamp yang sama
+    df = df.drop_duplicates(
+        subset=["timestamp"],
+        keep="last"
+    )
 
-    # Rolling max wind speed & rolling sum rain (window 3 jam)
-    df["wind_speed_roll_max_3h"] = df["wind_speed"].rolling(window=3, min_periods=1).max().round(2)
-    df["rain_roll_sum_3h"] = df["rain"].rolling(window=3, min_periods=1).sum().round(2)
+    df = df.sort_values("timestamp")
 
+    numeric_columns = [
+        "temperature",
+        "humidity",
+        "pressure",
+        "wind_speed",
+        "rain"
+    ]
+
+    # Interpolasi missing value maksimal 3 jam berturut-turut
+    df[numeric_columns] = df[numeric_columns].interpolate(
+        method="linear",
+        limit=3
+    )
+    df = df.dropna()
+
+    return df
+
+
+def feature_engineering(df):
+
+    # Perubahan tekanan udara selama 3 jam
+    df["pressure_drop_3h"] = (
+        df["pressure"].shift(3) - df["pressure"]
+    )
+
+    # Kecepatan angin maksimum dalam 3 jam
+    df["wind_speed_roll_max_3h"] = (
+        df["wind_speed"].rolling(window=3).max()
+    )
+
+    # Total curah hujan dalam 3 jam
+    df["rain_roll_sum_3h"] = (
+        df["rain"].rolling(window=3).sum()
+    )
+
+    # Jam pengamatan
     df["hour"] = df["timestamp"].dt.hour
 
     return df
 
 
-def label_kelayakan(df: pd.DataFrame) -> pd.DataFrame:
-    """Beri label biner kelayakan berdasarkan kombinasi threshold.
+def create_label(df):
+    """Membuat label kelayakan penyeberangan."""
 
-    1 = Layak, 0 = Tidak Layak.
-    Tidak Layak jika salah satu kondisi berikut terpenuhi:
-    - wind_speed melebihi ambang batas
-    - rain melebihi ambang batas
-    - penurunan tekanan tajam dalam 3 jam (indikasi badai)
-    """
-    df = df.copy()
-
-    tidak_layak = (
-        (df["wind_speed"] >= WIND_SPEED_THRESHOLD)
-        | (df["rain"] >= RAIN_THRESHOLD)
-        | (df["pressure_drop_3h"] >= PRESSURE_DROP_THRESHOLD)
+    risk_condition = (
+        (df["wind_speed"] >= 30) |
+        (df["rain"] >= 20) |
+        (df["pressure_drop_3h"] >= 5)
     )
 
-    df["kelayakan"] = np.where(tidak_layak, 0, 1)  # 0 = Tidak Layak, 1 = Layak
-    df["kelayakan_label"] = df["kelayakan"].map({1: "Layak", 0: "Tidak Layak"})
+    # 1 = Layak, 0 = Tidak Layak
+    df["kelayakan_label"] = (~risk_condition).astype(int)
+
+    df["kelayakan"] = df["kelayakan_label"].map({
+        1: "Layak",
+        0: "Tidak Layak"
+    })
 
     return df
 
 
-def check_drift(baseline: pd.DataFrame, current: pd.DataFrame, columns=None, alpha: float = 0.05) -> dict:
-    """Cek data drift antar dua periode menggunakan Kolmogorov-Smirnov test.
+def save_data(df):
+    """Menyimpan data hasil preprocessing."""
 
-    Return dict berisi p-value & status drift per kolom.
-    """
-    if columns is None:
-        columns = ["temperature", "humidity", "pressure", "wind_speed", "rain"]
+    os.makedirs("data/processed", exist_ok=True)
 
-    results = {}
-    for col in columns:
-        stat, p_value = ks_2samp(baseline[col].dropna(), current[col].dropna())
-        results[col] = {
-            "ks_statistic": round(stat, 4),
-            "p_value": round(p_value, 4),
-            "drift_detected": bool(p_value < alpha),
-        }
-    return results
+    df.to_csv(
+        PROCESSED_FILE,
+        index=False
+    )
+
+    print("Data preprocessing berhasil.")
+    print(f"Data tersimpan di: {PROCESSED_FILE}")
+    print(f"Total data: {len(df)} baris")
 
 
-def run_pipeline(raw_path: str = CSV_RAW, processed_path: str = CSV_PROCESSED) -> pd.DataFrame:
-    """Jalankan seluruh pipeline preprocessing end-to-end."""
-    print("Memuat data mentah(raw)")
-    df = load_raw_data(raw_path)
+def main():
+    print("Memulai preprocessing...")
 
-    print("Membersihkan data")
+    # 1. Load seluruh snapshot
+    df = load_data()
+    print(f"Data setelah digabungkan: {len(df)} baris")
+
+    # 2. Cleaning
     df = clean_data(df)
+    print(f"Data setelah cleaning: {len(df)} baris")
 
-    print("Feature engineering")
-    df = engineer_features(df)
+    # 3. Feature engineering
+    df = feature_engineering(df)
 
-    print("Labeling kelayakan")
-    df = label_kelayakan(df)
+    # 4. Membuat label
+    df = create_label(df)
 
-    os.makedirs(os.path.dirname(processed_path), exist_ok=True)
-    df.to_csv(processed_path, index=False)
+    # 5. Hapus baris awal yang belum memiliki nilai fitur 3 jam
+    df = df.dropna()
 
-    n_layak = (df["kelayakan"] == 1).sum()
-    n_tidak_layak = (df["kelayakan"] == 0).sum()
-    print(
-        f"Selesai. {len(df)} baris disimpan ke {processed_path} "
-        f"(Layak: {n_layak}, Tidak Layak: {n_tidak_layak})"
-    )
-
-    return df
+    # 6. Simpan hasil
+    save_data(df)
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    main()
