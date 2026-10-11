@@ -125,3 +125,53 @@ python src/ingest_data.py --runs 3 --every 60
 
 Perintah tersebut akan melakukan pengambilan data sebanyak 3 kali dengan jeda 60 detik antar pengambilan.
 Setiap pengambilan menghasilkan file snapshot baru sehingga data sebelumnya tetap tersimpan.
+
+
+## Versioning Data dengan DVC
+
+Dataset mentah (`data/raw/`) dilacak oleh DVC, bukan Git. Git hanya menyimpan file penunjuk `data/raw.dvc` (berisi hash, jumlah file, dan ukuran), sedangkan data aslinya disimpan di DVC remote (`../dvc-storage`). Dengan begitu repositori Git tetap ringan, tapi setiap versi dataset tetap bisa ditelusuri.
+
+### Alur menambah versi data baru
+
+1. Ambil data terbaru (menghasilkan file snapshot baru di `data/raw/`):
+```bash
+   python src/ingest_data.py
+```
+2. Cek perubahan dataset:
+```bash
+   dvc status
+```
+   `data/raw` akan berstatus *modified*.
+3. Catat versi baru di DVC (hash di `data/raw.dvc` berubah):
+```bash
+   dvc add data/raw
+```
+4. Commit file penunjuk dan beri tag versi:
+```bash
+   git add data/raw.dvc
+   git commit -m "data: add new ingestion snapshot"
+   git tag data-v2
+```
+5. Kirim data ke remote:
+```bash
+   dvc push
+```
+
+### Membandingkan dua versi
+
+```bash
+dvc diff data-v1 data-v2
+```
+
+Perintah ini menampilkan file yang ditambah atau berubah di antara dua versi dataset.
+
+### Kembali ke versi lama
+
+```bash
+git checkout data-v1
+dvc checkout
+```
+
+### Catatan
+
+Remote DVC yang dipakai adalah folder lokal, jadi `dvc pull` hanya bisa dijalankan di komputer yang punya folder tersebut. Untuk kolaborasi, remote bisa diganti ke penyimpanan cloud (S3, GCP, atau MinIO).
