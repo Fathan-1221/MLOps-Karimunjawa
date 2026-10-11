@@ -121,7 +121,7 @@ kelayakan → "Layak" atau "Tidak Layak"
 Script ingestion juga dapat digunakan untuk melakukan simulasi pengambilan data secara berkala.
 
 Contoh:
-python src/ingest_data.py --runs 3 --every 60
+python src/ingest_data.py --days 30
 
 Perintah tersebut akan melakukan pengambilan data sebanyak 3 kali dengan jeda 60 detik antar pengambilan.
 Setiap pengambilan menghasilkan file snapshot baru sehingga data sebelumnya tetap tersimpan.
