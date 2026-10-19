@@ -9,9 +9,9 @@ data:
   max_lag_hours: 3
 
 thresholds:
-  wind_speed_kmh: 30
-  rain_mm: 20
-  pressure_drop_hpa: 5
+  wind_speed_kmh: 18
+  rain_mm: 5
+  pressure_drop_hpa: 3
 
 model:
   target_column: "kelayakan"

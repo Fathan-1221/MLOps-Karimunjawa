@@ -5,10 +5,22 @@ import glob
 RAW_DIR = "data/raw"
 PROCESSED_FILE = "data/processed/jepara_weather_clean.csv"
 
+NUMERIC_COLUMNS = [
+    "temperature",
+    "humidity",
+    "pressure",
+    "wind_speed",
+    "rain"
+]
+
+WIND_SPEED_THRESHOLD = 18      # km/jam
+RAIN_THRESHOLD = 5            # mm/jam
+PRESSURE_DROP_THRESHOLD = 3    # hPa dalam 3 jam
+
 
 def load_data():
-    
-    files = glob.glob(os.path.join(RAW_DIR, "weather_*.csv"))
+
+    files = sorted(glob.glob(os.path.join(RAW_DIR, "weather_*.csv")))
 
     if not files:
         raise FileNotFoundError(
@@ -23,6 +35,11 @@ def load_data():
 
     df = pd.concat(dataframes, ignore_index=True)
 
+    before = len(df)
+    df = df.dropna(subset=NUMERIC_COLUMNS, how="all")
+    if len(df) < before:
+        print(f"{before - len(df)} baris kosong dibuang")
+
     df["timestamp"] = pd.to_datetime(df["timestamp"])
 
     return df
@@ -31,48 +48,40 @@ def load_data():
 def clean_data(df):
     """Membersihkan data cuaca."""
 
-    # Hapus timestamp yang sama
     df = df.drop_duplicates(
         subset=["timestamp"],
         keep="last"
     )
 
-    df = df.sort_values("timestamp")
+    df = df.sort_values("timestamp").reset_index(drop=True)
 
-    numeric_columns = [
-        "temperature",
-        "humidity",
-        "pressure",
-        "wind_speed",
-        "rain"
-    ]
-
-    # Interpolasi missing value maksimal 3 jam berturut-turut
-    df[numeric_columns] = df[numeric_columns].interpolate(
+    df[NUMERIC_COLUMNS] = df[NUMERIC_COLUMNS].interpolate(
         method="linear",
         limit=3
     )
-    df = df.dropna()
+    df = df.dropna().reset_index(drop=True)
 
     return df
 
 
 def feature_engineering(df):
+    segment = (df["timestamp"].diff() != pd.Timedelta(hours=1)).cumsum()
+    by_segment = df.groupby(segment)
 
-    # Perubahan tekanan udara selama 3 jam
+    # Perubahan tekanan udara selama 3 jam (positif = tekanan turun)
     df["pressure_drop_3h"] = (
-        df["pressure"].shift(3) - df["pressure"]
-    )
+        by_segment["pressure"].shift(3) - df["pressure"]
+    ).round(2)
 
     # Kecepatan angin maksimum dalam 3 jam
-    df["wind_speed_roll_max_3h"] = (
-        df["wind_speed"].rolling(window=3).max()
-    )
+    df["wind_speed_roll_max_3h"] = by_segment["wind_speed"].transform(
+        lambda s: s.rolling(window=3).max()
+    ).round(2)
 
     # Total curah hujan dalam 3 jam
-    df["rain_roll_sum_3h"] = (
-        df["rain"].rolling(window=3).sum()
-    )
+    df["rain_roll_sum_3h"] = by_segment["rain"].transform(
+        lambda s: s.rolling(window=3).sum()
+    ).round(2)
 
     # Jam pengamatan
     df["hour"] = df["timestamp"].dt.hour
@@ -84,9 +93,9 @@ def create_label(df):
     """Membuat label kelayakan penyeberangan."""
 
     risk_condition = (
-        (df["wind_speed"] >= 30) |
-        (df["rain"] >= 20) |
-        (df["pressure_drop_3h"] >= 5)
+        (df["wind_speed"] >= WIND_SPEED_THRESHOLD) |
+        (df["rain"] >= RAIN_THRESHOLD) |
+        (df["pressure_drop_3h"] >= PRESSURE_DROP_THRESHOLD)
     )
 
     # 1 = Layak, 0 = Tidak Layak
@@ -113,6 +122,7 @@ def save_data(df):
     print("Data preprocessing berhasil.")
     print(f"Data tersimpan di: {PROCESSED_FILE}")
     print(f"Total data: {len(df)} baris")
+    print(df["kelayakan"].value_counts().to_string())
 
 
 def main():
