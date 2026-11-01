@@ -177,3 +177,20 @@ dvc checkout
 Remote DVC yang dipakai adalah folder lokal, jadi `dvc pull` hanya bisa dijalankan di komputer yang punya folder tersebut. Untuk kolaborasi, remote bisa diganti ke penyimpanan cloud (S3, GCP, atau MinIO).
 
 odel API memakai rf_200_depth10 (Version 1, F1 tertinggi 31,87%).
+
+
+
+
+## Model Registry (LK-08)
+
+Model terdaftar: `karimunjawa-kelayakan`. Versi aktif untuk inferensi: **v1** (stage/alias `production`).
+
+| Versi | Run | n_estimators | max_depth | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|---|---|---|
+| 1 | rf_200_depth10 | 200 | 10 | 90,38% | 40,40% | 26,32% | 31,87% |
+| 2 | rf_200_depth7 | 200 | 7 | 88,58% | 31,11% | 27,63% | 29,27% |
+
+Alasan memilih v1: F1 lebih tinggi (31,87% dibanding 29,27%). Versi 2 dengan `max_depth=7` memiliki recall sedikit lebih tinggi (27,63% dibanding 26,32%), tetapi precision turun dari 40,40% menjadi 31,11% dan accuracy turun dari 90,38% menjadi 88,58%. Versi 2 tetap di Staging sebagai pembanding.
+Riwayat transisi: `models/registry_log.md`. Lineage data: `models/model_registry.yaml`.
+
+Memuat model: `mlflow.pyfunc.load_model("models:/karimunjawa-kelayakan@production")`
