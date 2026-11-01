@@ -175,3 +175,5 @@ dvc checkout
 ### Catatan
 
 Remote DVC yang dipakai adalah folder lokal, jadi `dvc pull` hanya bisa dijalankan di komputer yang punya folder tersebut. Untuk kolaborasi, remote bisa diganti ke penyimpanan cloud (S3, GCP, atau MinIO).
+
+odel API memakai rf_200_depth10 (Version 1, F1 tertinggi 31,87%).

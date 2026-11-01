@@ -28,6 +28,7 @@ data/processed/*
 # Models (versioned via DVC/MLflow, not git)
 models/*
 !models/.gitkeep
+!models/model.pkl
 !models/best_model_metadata.md
 
 # MLflow
