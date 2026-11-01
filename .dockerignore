@@ -1,0 +1,5 @@
+# Whitelist: hanya file ini yang masuk ke build context
+*
+!app.py
+!requirements-api.txt
+!models/model.pkl
