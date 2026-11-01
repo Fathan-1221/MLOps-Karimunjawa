@@ -30,6 +30,8 @@ models/*
 !models/.gitkeep
 !models/model.pkl
 !models/best_model_metadata.md
+!models/registry_log.md
+!models/model_registry.yaml
 
 # MLflow
 mlruns/
