@@ -1,9 +1,3 @@
-"""Ekspor model terbaik dari MLflow ke file joblib (models/model.pkl).
-
-File inilah yang disalin ke Docker image oleh Dockerfile.
-Jalankan di laptop (tempat mlflow.db berada), bukan di dalam Docker.
-"""
-
 import argparse
 import os
 
@@ -18,7 +12,6 @@ OUT_PATH = os.path.join("models", "model.pkl")
 
 
 def resolve_uri(args) -> str:
-    """Tentukan URI model: dari run ID, atau dari Model Registry."""
     if args.run_id:
         return f"runs:/{args.run_id}/model"
 
