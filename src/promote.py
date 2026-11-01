@@ -1,14 +1,3 @@
-"""Transisi stage model di MLflow Model Registry + catatan riwayat.
-
-Contoh:
-  python src/promote.py 1 Staging --note "kandidat awal"
-  python src/promote.py 1 Production --note "F1 tertinggi"
-
-Selain mengubah stage (None -> Staging -> Production -> Archived), script ini
-memasang alias dengan nama yang sama (staging / production) dan mencatat
-setiap transisi ke models/registry_log.md sebagai dokumentasi.
-"""
-
 import argparse
 import os
 import warnings
@@ -36,7 +25,7 @@ def main():
     before = client.get_model_version(NAME, args.version).current_stage
 
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # API stage ditandai deprecated di MLflow baru
+        warnings.simplefilter("ignore")
         client.transition_model_version_stage(
             NAME, args.version, args.stage,
             archive_existing_versions=(args.stage == "Production"),
@@ -45,13 +34,12 @@ def main():
     if args.stage in ("Staging", "Production"):
         client.set_registered_model_alias(NAME, args.stage.lower(), args.version)
 
-    # Versi yang naik ke Production tidak lagi berstatus staging: lepas alias staging-nya
     if args.stage == "Production":
         try:
             if str(client.get_model_version_by_alias(NAME, "staging").version) == str(args.version):
                 client.delete_registered_model_alias(NAME, "staging")
         except Exception:
-            pass  # alias staging memang belum ada
+            pass
 
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     new_file = not os.path.exists(LOG_PATH)
@@ -62,7 +50,7 @@ def main():
 
     print(f"Versi {args.version}: {before} -> {args.stage}")
     for v in sorted(client.search_model_versions(f"name='{NAME}'"), key=lambda v: int(v.version)):
-        full = client.get_model_version(NAME, v.version)  # get_model_version memuat alias
+        full = client.get_model_version(NAME, v.version)
         print(f"  v{v.version}: stage={full.current_stage}, alias={sorted(full.aliases)}")
 
 

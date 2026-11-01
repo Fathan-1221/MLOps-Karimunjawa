@@ -1,9 +1,3 @@
-"""Isi deskripsi dan tag metadata untuk model terdaftar di MLflow Model Registry.
-
-Deskripsi tiap versi dibuat otomatis dari parameter dan metrik run asalnya,
-jadi isinya selalu sesuai dengan data eksperimen. Aman dijalankan berulang.
-"""
-
 import mlflow
 from mlflow.tracking import MlflowClient
 
