@@ -199,6 +199,6 @@ Memuat model: `mlflow.pyfunc.load_model("models:/karimunjawa-kelayakan@productio
 
 Workflow `.github/workflows/mlops-automation.yaml` berjalan otomatis pada push dan pull request ke `main`: test (pytest), train (dvc pull, preprocess, train), evaluate, lalu register ke MLflow Model Registry (Staging, hanya di `main`).
 
-Threshold validasi (`config/thresholds.json`): accuracy >= 0,80, recall >= 0,20, F1 >= 0,25. LK-01 hanya menyebut metriknya tanpa angka, jadi ambang ditetapkan sekitar 80% dari hasil terbaik LK-06. Model di bawah ambang membuat job evaluate gagal dan register tidak berjalan.
+Threshold validasi (`config/thresholds.json`): accuracy >= 0,80, recall >= 0,20, F1 >= 0,25. LK-01 menetapkan metrik keberhasilan (accuracy, recall kelas Tidak Layak yang diprioritaskan, F1-score, dan latency) tanpa angka ambang, sehingga ambang ditetapkan di LK-09 sekitar 80% dari hasil terbaik LK-06. Recall disertakan sebagai gerbang karena LK-01 memprioritaskannya untuk menghindari false negative. Latency tidak diperiksa di CI karena diukur pada layanan API (LK-07) dan skrip verifikasi registry (LK-08)
 
 Batasan: DVC remote untuk CI berupa folder `dvc-ci-storage/` di repo (data kecil). Untuk produksi sebaiknya memakai S3 atau GCS. Registry MLflow di CI memakai SQLite sementara, sehingga versi selalu mulai dari 1 dan hasilnya diunggah sebagai artifact `mlflow-registry`.
