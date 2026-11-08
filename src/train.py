@@ -89,7 +89,7 @@ def main():
     p = argparse.ArgumentParser(description="Training + MLflow tracking")
     p.add_argument("--model", choices=["rf", "logreg"], default="rf")
     p.add_argument("--n-estimators", type=int, default=100)
-    p.add_argument("--max-depth", type=int, default=5)
+    p.add_argument("--max-depth", type=int, default=7)
     p.add_argument("--C", type=float, default=1.0)
     p.add_argument("--horizon", type=int, default=3, help="prediksi N jam ke depan")
     p.add_argument("--test-size", type=float, default=0.2)
