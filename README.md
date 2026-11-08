@@ -194,3 +194,11 @@ Alasan memilih v1: F1 lebih tinggi (31,87% dibanding 29,27%). Versi 2 dengan `ma
 Riwayat transisi: `models/registry_log.md`. Lineage data: `models/model_registry.yaml`.
 
 Memuat model: `mlflow.pyfunc.load_model("models:/karimunjawa-kelayakan@production")`
+
+## CI/CD (LK-09)
+
+Workflow `.github/workflows/mlops-automation.yaml` berjalan otomatis pada push dan pull request ke `main`: test (pytest), train (dvc pull, preprocess, train), evaluate, lalu register ke MLflow Model Registry (Staging, hanya di `main`).
+
+Threshold validasi (`config/thresholds.json`): accuracy >= 0,80, recall >= 0,20, F1 >= 0,25. LK-01 hanya menyebut metriknya tanpa angka, jadi ambang ditetapkan sekitar 80% dari hasil terbaik LK-06. Model di bawah ambang membuat job evaluate gagal dan register tidak berjalan.
+
+Batasan: DVC remote untuk CI berupa folder `dvc-ci-storage/` di repo (data kecil). Untuk produksi sebaiknya memakai S3 atau GCS. Registry MLflow di CI memakai SQLite sementara, sehingga versi selalu mulai dari 1 dan hasilnya diunggah sebagai artifact `mlflow-registry`.

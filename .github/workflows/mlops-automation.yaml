@@ -1,0 +1,111 @@
+name: MLOps Automation
+
+# Code as a Trigger: setiap push ke main atau pull request ke main
+# menjalankan rantai test -> train -> evaluate -> register secara otomatis.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    name: "1. Automated Testing"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+      - name: Run pytest
+        run: python -m pytest -v
+
+  train:
+    name: "2. Automated Training"
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+      - name: Pull data dari DVC
+        run: dvc pull -r ci
+      - name: Preprocessing
+        run: python src/preprocess.py
+      - name: Training dan logging MLflow
+        run: python src/train.py --run-name "ci_${GITHUB_SHA::7}"
+      - name: Simpan hasil MLflow untuk tahap berikutnya
+        uses: actions/upload-artifact@v6
+        with:
+          name: mlflow-run
+          path: |
+            mlflow.db
+            mlruns/
+          if-no-files-found: error
+
+  evaluate:
+    name: "3. Model Evaluation and Validation"
+    needs: train
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+      - name: Ambil hasil training
+        uses: actions/download-artifact@v7
+        with:
+          name: mlflow-run
+          path: .
+      - name: Bandingkan metrik dengan threshold
+        run: python src/evaluate.py
+
+  register:
+    name: "4. Auto-Registry Update (Staging)"
+    needs: evaluate
+    # Hanya di main (push atau manual), bukan di pull request
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+      - name: Ambil hasil training
+        uses: actions/download-artifact@v7
+        with:
+          name: mlflow-run
+          path: .
+      - name: Daftarkan model ke Model Registry (Staging)
+        run: python -m src.register_staging
+      - name: Simpan registry untuk diperiksa
+        uses: actions/upload-artifact@v6
+        with:
+          name: mlflow-registry
+          path: |
+            mlflow.db
+            mlruns/

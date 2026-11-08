@@ -2,3 +2,5 @@
     remote = localstorage
 ['remote "localstorage"']
     url = ../../dvc-storage
+['remote "ci"']
+    url = ../dvc-ci-storage
