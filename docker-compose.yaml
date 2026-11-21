@@ -1,0 +1,97 @@
+# Orkestrasi sistem ML Karimunjawa dengan satu perintah: docker compose up -d
+#
+#   mlflow-server  : MLflow tracking server + Model Registry (data di volume mlflow-data)
+#   seed-registry  : tugas sekali jalan, mendaftarkan models/model.pkl ke registry
+#   api-service    : API inferensi (FastAPI) yang menarik model dari mlflow-server
+name: karimunjawa-mlops
+
+# Konfigurasi build bersama untuk api-service dan seed-registry (satu image, dua peran)
+x-api-build: &api-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: karimunjawa-api:compose
+
+services:
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    image: karimunjawa-mlflow:compose
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --workers=2
+      # MLflow 3.x memvalidasi header Host; nama layanan harus didaftarkan
+      - --allowed-hosts=mlflow-server:5000,localhost:5000,127.0.0.1:5000,*.app.github.dev
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow          # metadata (SQLite) dan artefak model bertahan saat kontainer dimatikan
+    networks:
+      - mlops-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  seed-registry:
+    <<: *api-build
+    command: ["python", "seed_registry.py"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+    networks:
+      - mlops-net
+    restart: "no"
+
+  api-service:
+    <<: *api-build
+    # Tanpa container_name dan dengan rentang port, supaya mudah direplikasi:
+    #   docker compose up -d --scale api-service=3
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_URI: models:/karimunjawa-kelayakan@production
+    ports:
+      - "8000-8010:8000"
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+      seed-registry:
+        condition: service_completed_successfully
+    networks:
+      - mlops-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
+        reservations:
+          cpus: "0.10"
+          memory: 256M
+
+networks:
+  mlops-net:
+    driver: bridge
+
+volumes:
+  mlflow-data:

@@ -202,3 +202,51 @@ Workflow `.github/workflows/mlops-automation.yaml` berjalan otomatis pada push d
 Threshold validasi (`config/thresholds.json`): accuracy >= 0,80, recall >= 0,20, F1 >= 0,25. LK-01 hanya menyebut metriknya tanpa angka, jadi ambang ditetapkan sekitar 80% dari hasil terbaik LK-06. Model di bawah ambang membuat job evaluate gagal dan register tidak berjalan.
 
 Batasan: DVC remote untuk CI berupa folder `dvc-ci-storage/` di repo (data kecil). Untuk produksi sebaiknya memakai S3 atau GCS. Registry MLflow di CI memakai SQLite sementara, sehingga versi selalu mulai dari 1 dan hasilnya diunggah sebagai artifact `mlflow-registry`.
+
+
+## LK10
+# Menjalankan Seluruh Sistem dengan Docker Compose
+
+Satu perintah menjalankan tiga layanan dalam satu jaringan:
+
+| Layanan | Peran | Port host |
+|---|---|---|
+| `mlflow-server` | MLflow tracking server dan Model Registry | 5000 |
+| `seed-registry` | Tugas sekali jalan: mendaftarkan `models/model.pkl` ke registry (alias `production`) | - |
+| `api-service` | API inferensi FastAPI; menarik model dari `mlflow-server` lewat nama layanan | 8000 |
+
+Ketiganya terhubung lewat custom bridge network `mlops-net` (service discovery dengan nama layanan).
+Data MLflow (metadata dan artefak model) disimpan di volume `mlflow-data`, sehingga tidak hilang saat kontainer dimatikan.
+`depends_on` dengan healthcheck memastikan urutan: `mlflow-server` sehat, lalu `seed-registry` selesai, baru `api-service` mulai.
+
+### Prasyarat
+Docker dengan Compose v2 (sudah tersedia di GitHub Codespaces). File `models/model.pkl`, `requirements-api.txt`, dan `requirements-mlflow.txt` ada di repositori.
+
+### Menjalankan
+```bash
+docker compose up -d --build
+docker compose ps -a
+```
+
+### Menguji
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/model-info      # bukti model ditarik dari mlflow-server
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"temperature": 29.5, "humidity": 70, "pressure": 1009.3, "wind_speed": 21.5, "rain": 0.0, "pressure_drop_3h": 1.2, "wind_speed_roll_max_3h": 22.0, "rain_roll_sum_3h": 0.0, "hour": 14}'
+```
+MLflow UI: http://localhost:5000 (di Codespaces, buka lewat tab Ports).
+
+### Replika API
+```bash
+docker compose up -d --scale api-service=3
+docker compose ps
+```
+Replika memakai port host 8000-8010 secara berurutan.
+
+### Menghentikan
+```bash
+docker compose down        # kontainer dihapus, data di volume tetap ada
+docker compose down -v     # sekaligus menghapus volume (data registry hilang)
+```

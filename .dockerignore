@@ -1,5 +1,7 @@
 # Whitelist: hanya file ini yang masuk ke build context
 *
 !app.py
+!seed_registry.py
 !requirements-api.txt
+!requirements-mlflow.txt
 !models/model.pkl
