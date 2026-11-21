@@ -1,12 +1,20 @@
 """Layanan inferensi REST API: prediksi kelayakan penyeberangan Karimunjawa.
 
+Sumber model:
+  - MODEL_URI diisi (mis. models:/karimunjawa-kelayakan@production): model ditarik dari
+    MLflow Model Registry lewat MLFLOW_TRACKING_URI (mode Docker Compose).
+  - MODEL_URI kosong: model dibaca dari file MODEL_PATH (mode satu kontainer, LK-07).
+
 Endpoint:
-  GET  /health   -> cek layanan hidup
-  POST /predict  -> prediksi Layak / Tidak Layak dari data cuaca
+  GET  /health      -> cek layanan hidup
+  GET  /model-info  -> dari mana model dimuat (bukti komunikasi dengan tracking server)
+  POST /predict     -> prediksi Layak / Tidak Layak dari data cuaca
 Dokumentasi interaktif otomatis ada di /docs.
 """
 
 import os
+import re
+import time
 
 import joblib
 import pandas as pd
@@ -14,6 +22,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict, Field
 
 MODEL_PATH = os.getenv("MODEL_PATH", os.path.join("models", "model.pkl"))
+MODEL_URI = os.getenv("MODEL_URI")
+TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
 
 # Urutan fitur harus sama dengan FEATURES di src/train.py
 FEATURES = [
@@ -21,18 +31,51 @@ FEATURES = [
     "pressure_drop_3h", "wind_speed_roll_max_3h", "rain_roll_sum_3h", "hour",
 ]
 
-# Dimuat sekali saat server start. Kalau file model hilang, server langsung gagal start.
-model = joblib.load(MODEL_PATH)
+
+def load_model():
+    """Muat model dari MLflow server (jika MODEL_URI diisi) atau dari file lokal."""
+    if not MODEL_URI:
+        return joblib.load(MODEL_PATH), {"source": "file", "path": MODEL_PATH}
+
+    import mlflow
+    import mlflow.sklearn
+    from mlflow.tracking import MlflowClient
+
+    mlflow.set_tracking_uri(TRACKING_URI)
+    last_error = None
+    for attempt in range(1, 6):
+        try:
+            model = mlflow.sklearn.load_model(MODEL_URI)
+            break
+        except Exception as err:  # server baru bangun / model belum terdaftar
+            last_error = err
+            print(f"[Percobaan {attempt}/5] Gagal memuat {MODEL_URI}: {err}", flush=True)
+            time.sleep(3)
+    else:
+        raise RuntimeError(f"Tidak bisa memuat model dari {MODEL_URI}") from last_error
+
+    info = {"source": "mlflow-server", "tracking_uri": TRACKING_URI, "model_uri": MODEL_URI}
+    match = re.fullmatch(r"models:/([^@/]+)@(.+)", MODEL_URI)
+    if match:
+        name, alias = match.groups()
+        mv = MlflowClient().get_model_version_by_alias(name, alias)
+        info.update(model_name=name, alias=alias, version=str(mv.version), run_id=mv.run_id)
+    print(f"Model dimuat: {info}", flush=True)
+    return model, info
+
+
+# Dimuat sekali saat server start. Kalau gagal, kontainer langsung berhenti (tidak diam-diam).
+model, MODEL_INFO = load_model()
 
 app = FastAPI(
     title="Prediksi Kelayakan Penyeberangan Karimunjawa",
     description="Memprediksi kelayakan penyeberangan 3 jam ke depan dari data cuaca maritim.",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 
 class WeatherInput(BaseModel):
-    temperature: float = Field(..., description="Suhu udara 2 m (°C)")
+    temperature: float = Field(..., description="Suhu udara 2 m (derajat C)")
     humidity: float = Field(..., ge=0, le=100, description="Kelembapan relatif (%)")
     pressure: float = Field(..., gt=0, description="Tekanan permukaan (hPa)")
     wind_speed: float = Field(..., ge=0, description="Kecepatan angin 10 m (km/jam)")
@@ -66,6 +109,11 @@ class PredictionOut(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/model-info")
+def model_info():
+    return MODEL_INFO
 
 
 @app.post("/predict", response_model=PredictionOut)
