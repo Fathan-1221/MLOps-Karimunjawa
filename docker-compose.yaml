@@ -1,11 +1,6 @@
-# Orkestrasi sistem ML Karimunjawa dengan satu perintah: docker compose up -d
-#
-#   mlflow-server  : MLflow tracking server + Model Registry (data di volume mlflow-data)
-#   seed-registry  : tugas sekali jalan, mendaftarkan models/model.pkl ke registry
-#   api-service    : API inferensi (FastAPI) yang menarik model dari mlflow-server
 name: karimunjawa-mlops
 
-# Konfigurasi build bersama untuk api-service dan seed-registry (satu image, dua peran)
+
 x-api-build: &api-build
   build:
     context: .
