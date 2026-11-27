@@ -250,3 +250,32 @@ Replika memakai port host 8000-8010 secara berurutan.
 docker compose down        # kontainer dihapus, data di volume tetap ada
 docker compose down -v     # sekaligus menghapus volume (data registry hilang)
 ```
+
+
+## Model Serving dan Scaling (LK-10)
+
+Model `karimunjawa-kelayakan` (alias `production`) dilayani oleh image `karimunjawa-mlflow-model:1.0` yang dibangun dengan `mlflow models build-docker`. Layanan `model-serving` berjalan dalam 3 replika di belakang nginx (`load-balancer`).
+
+Persiapan (sekali): jalankan sistem LK-09, isi registry, lalu bangun image:
+
+    docker compose up -d mlflow-server
+    docker compose exec -T mlflow-server python /seed/seed_registry.py
+    export MLFLOW_TRACKING_URI=http://localhost:5000
+    mlflow models build-docker -m "models:/karimunjawa-kelayakan@production" -n karimunjawa-mlflow-model:1.0
+
+Jalankan seluruh sistem:
+
+    docker compose up -d
+    docker compose ps
+
+Akses endpoint prediksi (melalui nginx, port 8080):
+
+    curl -X POST http://localhost:8080/invocations -H "Content-Type: application/json" -d '{"dataframe_split": {"columns": ["temperature","humidity","pressure","wind_speed","rain","pressure_drop_3h","wind_speed_roll_max_3h","rain_roll_sum_3h","hour"], "data": [[29.5, 70, 1009.3, 21.5, 0.0, 1.2, 22.0, 0.0, 14]]}}'
+
+Keluaran `{"predictions": [0]}` berarti Tidak Layak dan `[1]` berarti Layak.
+
+Menambah jumlah replika secara dinamis, tanpa mematikan layanan lain:
+
+    docker compose up -d --scale model-serving=5
+
+Jumlah bawaan ada di `docker-compose.yaml` (`deploy.replicas: 3`). Hentikan sistem dengan `docker compose down`.
